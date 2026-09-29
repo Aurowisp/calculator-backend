@@ -4,7 +4,7 @@
 
 这是前后端分离计算器系统的 Backend，使用分层结构组织代码。
 
-当前为 Phase 2 - Backend Foundation，仅建立后端工程基础框架。此阶段不包含四则运算、表达式解析、数据库或历史记录功能。
+当前为 Phase 3 - Implement Calculate API。后端已提供安全的基础四则运算接口；数据库和历史记录功能尚未实现。
 
 ## 技术栈
 
@@ -24,16 +24,20 @@ calculator-backend/
 │   ├── service/                   # 业务用例协调层
 │   │   ├── calculator_service.py
 │   │   └── history_service.py
-│   ├── calculator/                # 未来的表达式解析与执行模块
+│   ├── calculator/                # 安全的表达式解析与执行模块
+│   │   ├── exceptions.py
 │   │   ├── parser.py
 │   │   └── evaluator.py
-│   ├── model/                     # 未来的数据模型层
+│   ├── model/                     # API 数据模型和未来的持久化模型
+│   │   ├── calculation.py
 │   │   └── history.py
 │   └── database/                  # 未来的数据库连接层
 │       └── database.py
 ├── requirements.txt
 ├── README.md
 ├── codestyle.md
+├── tests/
+│   └── test_calculate_api.py
 └── .gitignore
 ```
 
@@ -43,7 +47,7 @@ calculator-backend/
 
 - `controller`：接收 HTTP 请求并定义 API 路由。
 - `service`：未来用于编排业务用例，避免业务逻辑进入 Controller。
-- `calculator`：未来用于表达式解析和计算执行。
+- `calculator`：负责安全的表达式解析和计算执行，不依赖 FastAPI。
 - `model`：未来用于定义 History 等数据模型。
 - `database`：未来用于配置和管理 SQLite 连接。
 
@@ -79,7 +83,7 @@ uvicorn src.main:app --reload
 
 服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 的前端请求。
 
-## API 测试
+## API
 
 当前接口：
 
@@ -100,12 +104,57 @@ GET /
 - 服务状态：`http://localhost:8000`
 - Swagger 文档：`http://localhost:8000/docs`
 
+### 计算接口
+
+```http
+POST /api/calculate
+Content-Type: application/json
+```
+
+请求：
+
+```json
+{
+  "expression": "1+2"
+}
+```
+
+成功响应：
+
+```json
+{
+  "success": true,
+  "expression": "1+2",
+  "result": 3
+}
+```
+
+无效表达式返回 `400 Bad Request`：
+
+```json
+{
+  "success": false,
+  "message": "Invalid expression"
+}
+```
+
+缺失字段或字段类型错误由 FastAPI/Pydantic 返回 `422 Unprocessable Entity`。
+
+核心计算全部由后端完成。解析器不会使用 `eval()`、`exec()`、`compile()`，也不会把用户表达式作为 Python 程序执行。Phase 3 支持整数、基础四则运算和运算符优先级。
+
+## 自动测试
+
+```bash
+pytest
+```
+
+测试覆盖加、减、乘、除、除零、空表达式、非法字符、非法表达式和请求模型校验。
+
 ## 后续规划
 
 后续阶段将逐步增加：
 
-- Calculate API
-- Expression parser
+- 完整 Expression parser（括号、小数、一元正负号）
 - Database history
 
-这些功能不属于当前 Phase 2 的实现范围。
+数据库、历史记录 API、持久化和部署不属于当前 Phase 3 的实现范围。

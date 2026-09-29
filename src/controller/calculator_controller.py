@@ -1,12 +1,51 @@
-"""Calculator API routes.
-
-Calculation endpoints will be added in a later development phase.
-"""
+"""Calculator API routes."""
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from src.model.calculation import (
+    CalculateErrorResponse,
+    CalculateRequest,
+    CalculateResponse,
+)
+from src.service.calculator_service import (
+    CalculationServiceError,
+    CalculatorService,
+)
 
 
 router = APIRouter(
     prefix="/api",
     tags=["calculator"],
 )
+
+calculator_service = CalculatorService()
+
+
+@router.post(
+    "/calculate",
+    response_model=CalculateResponse,
+    responses={
+        400: {
+            "model": CalculateErrorResponse,
+            "description": "Invalid mathematical expression",
+        }
+    },
+)
+async def calculate_expression(
+    request: CalculateRequest,
+) -> CalculateResponse | JSONResponse:
+    """Calculate an expression or return a consistent client error."""
+    try:
+        result = calculator_service.calculate(request.expression)
+    except CalculationServiceError as error:
+        error_response = CalculateErrorResponse(message=str(error))
+        return JSONResponse(
+            status_code=400,
+            content=error_response.model_dump(),
+        )
+
+    return CalculateResponse(
+        expression=request.expression,
+        result=result,
+    )
