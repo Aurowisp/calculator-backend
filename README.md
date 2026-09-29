@@ -87,7 +87,7 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload
 ```
 
-服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 的前端请求。
+服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 和 `http://127.0.0.1:5500` 的前端请求；部署阶段可在同一配置处加入正式 Frontend Origin。
 
 首次启动时会自动创建数据库及所需数据表。
 
