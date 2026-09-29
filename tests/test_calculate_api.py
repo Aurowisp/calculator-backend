@@ -5,12 +5,6 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-
-
-client = TestClient(app)
-
-
 @pytest.mark.parametrize(
     ("expression", "expected_result"),
     [
@@ -42,6 +36,7 @@ client = TestClient(app)
     ],
 )
 def test_calculate_success(
+    client: TestClient,
     expression: str,
     expected_result: int | float,
 ) -> None:
@@ -79,7 +74,10 @@ def test_calculate_success(
         "2(3+4)",
     ],
 )
-def test_calculate_rejects_invalid_expression(expression: str) -> None:
+def test_calculate_rejects_invalid_expression(
+    client: TestClient,
+    expression: str,
+) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": expression},
@@ -96,7 +94,10 @@ def test_calculate_rejects_invalid_expression(expression: str) -> None:
     "expression",
     ["10/0", "1/(2-2)", "10/(3-3)"],
 )
-def test_calculate_rejects_division_by_zero(expression: str) -> None:
+def test_calculate_rejects_division_by_zero(
+    client: TestClient,
+    expression: str,
+) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": expression},
@@ -110,7 +111,10 @@ def test_calculate_rejects_division_by_zero(expression: str) -> None:
 
 
 @pytest.mark.parametrize("expression", ["", "   ", "\t"])
-def test_calculate_rejects_empty_expression(expression: str) -> None:
+def test_calculate_rejects_empty_expression(
+    client: TestClient,
+    expression: str,
+) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": expression},
@@ -121,7 +125,9 @@ def test_calculate_rejects_empty_expression(expression: str) -> None:
     assert response.json()["message"] == "Expression must not be empty"
 
 
-def test_calculate_rejects_expression_over_length_limit() -> None:
+def test_calculate_rejects_expression_over_length_limit(
+    client: TestClient,
+) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": "1" * 201},
@@ -133,7 +139,10 @@ def test_calculate_rejects_expression_over_length_limit() -> None:
 
 
 @pytest.mark.parametrize("body", [{}, {"expression": 123}])
-def test_calculate_validates_request_model(body: dict[str, Any]) -> None:
+def test_calculate_validates_request_model(
+    client: TestClient,
+    body: dict[str, Any],
+) -> None:
     response = client.post("/api/calculate", json=body)
 
     assert response.status_code == 422

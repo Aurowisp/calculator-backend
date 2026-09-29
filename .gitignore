@@ -18,6 +18,9 @@ htmlcov/
 .env
 .env.*
 
+# Runtime databases
+*.db
+
 # IDE and operating system files
 .idea/
 .vscode/

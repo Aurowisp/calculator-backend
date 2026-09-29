@@ -4,13 +4,15 @@
 
 这是前后端分离计算器系统的 Backend，使用分层结构组织代码。
 
-当前为 Phase 4 - Complete Expression Parser。后端已提供安全的完整基础数学表达式解析；数据库和历史记录功能尚未实现。
+当前为 Phase 5 - SQLite Database + Calculation History。后端提供安全的数学表达式计算，并使用 SQLite 持久化成功计算的历史记录。
 
 ## 技术栈
 
 - Python 3.x
 - FastAPI
 - Uvicorn
+- SQLite
+- SQLAlchemy
 
 ## 项目结构
 
@@ -28,16 +30,20 @@ calculator-backend/
 │   │   ├── exceptions.py
 │   │   ├── parser.py
 │   │   └── evaluator.py
-│   ├── model/                     # API 数据模型和未来的持久化模型
+│   ├── model/                     # ORM 模型与 Pydantic API 模型
 │   │   ├── calculation.py
-│   │   └── history.py
-│   └── database/                  # 未来的数据库连接层
+│   │   ├── history.py
+│   │   └── history_schema.py
+│   └── database/                  # SQLAlchemy 配置与 Session 管理
 │       └── database.py
 ├── requirements.txt
 ├── README.md
 ├── codestyle.md
 ├── tests/
-│   └── test_calculate_api.py
+│   ├── conftest.py
+│   ├── test_calculate_api.py
+│   ├── test_calculator.py
+│   └── test_history_api.py
 └── .gitignore
 ```
 
@@ -46,10 +52,10 @@ calculator-backend/
 ### 分层职责
 
 - `controller`：接收 HTTP 请求并定义 API 路由。
-- `service`：未来用于编排业务用例，避免业务逻辑进入 Controller。
+- `service`：编排计算与历史记录业务，避免业务逻辑进入 Controller。
 - `calculator`：负责安全的表达式解析和计算执行，不依赖 FastAPI。
-- `model`：未来用于定义 History 等数据模型。
-- `database`：未来用于配置和管理 SQLite 连接。
+- `model`：定义 SQLAlchemy ORM 模型和 Pydantic API 模型。
+- `database`：配置 SQLAlchemy Engine，并管理数据库 Session。
 
 ## 环境配置
 
@@ -82,6 +88,8 @@ uvicorn src.main:app --reload
 ```
 
 服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 的前端请求。
+
+首次启动时会自动创建数据库及所需数据表。
 
 ## API
 
@@ -129,6 +137,8 @@ Content-Type: application/json
 }
 ```
 
+每次成功计算都会写入数据库；非法表达式、空表达式和除零不会生成历史记录。
+
 无效表达式返回 `400 Bad Request`：
 
 ```json
@@ -139,6 +149,63 @@ Content-Type: application/json
 ```
 
 缺失字段或字段类型错误由 FastAPI/Pydantic 返回 `422 Unprocessable Entity`。
+
+### 获取历史记录
+
+```http
+GET /api/history
+```
+
+返回按 ID 从大到小排列的记录，最新记录在前。没有记录时返回 `200 OK` 和空数组：
+
+```json
+[]
+```
+
+包含记录时返回：
+
+```json
+[
+  {
+    "id": 3,
+    "expression": "(1+2)*3",
+    "result": 9,
+    "created_at": "2026-10-01T10:22:00"
+  }
+]
+```
+
+### 删除历史记录
+
+```http
+DELETE /api/history/{id}
+```
+
+成功响应：
+
+```json
+{
+  "success": true,
+  "message": "History record deleted"
+}
+```
+
+记录不存在时返回 `404 Not Found`：
+
+```json
+{
+  "success": false,
+  "message": "History record not found"
+}
+```
+
+### HTTP 状态码
+
+- `200`：计算、查询或删除成功。
+- `400`：数学表达式无效或除零。
+- `404`：要删除的历史记录不存在。
+- `422`：请求体或路径参数未通过 FastAPI/Pydantic 校验。
+- `500`：数据库等内部操作失败；响应不会暴露 SQL 或服务器路径。
 
 核心计算全部由后端完成。解析器不会使用 `eval()`、`exec()`、`compile()`，也不会把用户表达式作为 Python 程序执行。
 
@@ -172,16 +239,40 @@ Parser 必须消费全部 Token，因此 `1 2`、`2(3+4)` 或尾随非法内容�
 
 结果使用 Python 的 `int` 或 `float`。数学结果为整数时会返回整数，例如 `8/2` 返回 `4`；其他浮点结果遵循 Python 浮点数精度。
 
+## Database
+
+本地开发使用项目根目录下的 `calculator.db`。该文件在应用启动时自动创建，并已由 `.gitignore` 排除，不应提交到版本控制。
+
+SQLAlchemy 表 `calculation_history` 包含：
+
+- `id`：整数主键和索引。
+- `expression`：非空表达式文本。
+- `result`：非空 JSON 数值，读取后保持 `int` 或 `float`。
+- `created_at`：非空 UTC 创建时间。
+
+应用启动时通过 `Base.metadata.create_all()` 创建缺失的数据表。每个 HTTP 请求通过 `get_db()` 获取独立 Session，并在请求结束后关闭。写操作使用 `add`、`commit`、`refresh`，数据库异常时执行 `rollback`。
+
+可通过环境变量覆盖默认数据库连接：
+
+```powershell
+$env:DATABASE_URL = "sqlite:///./custom-calculator.db"
+uvicorn src.main:app
+```
+
+该入口也为后续部署更换数据库保留配置空间；Phase 5 不包含 PostgreSQL 迁移。
+
 ## 自动测试
 
 ```bash
 pytest
 ```
 
-测试覆盖基础运算、优先级、左结合、括号、小数、一元正负号、空白字符、除零、非法表达式、长度限制和请求模型校验。
+测试覆盖基础运算、完整表达式解析、历史保存与排序、无效计算不保存、删除、缺失记录、数值类型和文件数据库持久化。
+
+pytest 使用临时目录中的独立 SQLite 数据库，并通过 FastAPI dependency override 替换开发 Session，因此不会创建或污染项目根目录下的 `calculator.db`。
 
 ## 后续规划
 
-下一阶段将增加 Database history。
+下一阶段将进行 Frontend - Backend Integration。
 
-数据库、历史记录 API、持久化和部署不属于当前 Phase 4 的实现范围。
+用户登录、分页、搜索、收藏、Clear All、公网部署和 PostgreSQL 迁移不属于当前 Phase 5 的实现范围。
