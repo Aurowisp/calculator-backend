@@ -17,9 +17,12 @@ htmlcov/
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Runtime databases
 *.db
+*.sqlite
+*.sqlite3
 
 # IDE and operating system files
 .idea/

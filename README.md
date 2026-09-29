@@ -4,20 +4,27 @@
 
 这是前后端分离计算器系统的 Backend，使用分层结构组织代码。
 
-当前为 Phase 5 - SQLite Database + Calculation History。后端提供安全的数学表达式计算，并使用 SQLite 持久化成功计算的历史记录。
+当前为 Phase 8 - Production Deployment Preparation。后端提供安全的数学表达式计算，并通过 SQLAlchemy 持久化成功计算的历史记录。本地默认使用 SQLite，生产环境通过 `DATABASE_URL` 连接 PostgreSQL。
 
 ## 技术栈
 
-- Python 3.x
+- Python 3.11
 - FastAPI
 - Uvicorn
-- SQLite
 - SQLAlchemy
+- SQLite（本地开发）
+- PostgreSQL + psycopg（生产环境）
+
+## 架构
+
+HTTP 请求由 FastAPI Controller 接收，Service 负责用例编排，Calculator 模块负责安全解析和计算，SQLAlchemy Model/Database 层负责持久化。Frontend 与 Backend 仅通过 HTTPS/JSON API 通信；Production History 的唯一数据源是 PostgreSQL。
 
 ## 项目结构
 
 ```text
 calculator-backend/
+├── .python-version              # 部署使用的 Python 版本
+├── .env.example                 # 无敏感信息的环境变量示例
 ├── src/
 │   ├── main.py                    # FastAPI 入口、中间件和 Router 注册
 │   ├── controller/                # HTTP API 路由层
@@ -59,7 +66,7 @@ calculator-backend/
 
 ## 环境配置
 
-需要安装 Python 3.x。推荐在项目根目录创建独立虚拟环境：
+项目已通过 `.python-version` 固定 Python 3.11。推荐在项目根目录创建独立虚拟环境：
 
 ```bash
 python -m venv venv
@@ -89,6 +96,17 @@ uvicorn src.main:app --reload
 
 服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 和 `http://127.0.0.1:5500` 的前端请求；部署阶段可在同一配置处加入正式 Frontend Origin。
 
+本地未配置 `CORS_ORIGINS` 时，默认允许：
+
+- `http://localhost:5500`
+- `http://127.0.0.1:5500`
+
+生产环境通过逗号分隔的 `CORS_ORIGINS` 配置 GitHub Pages Origin，不能包含 repository path。例如：
+
+```text
+CORS_ORIGINS=https://YOUR_GITHUB_USERNAME.github.io
+```
+
 首次启动时会自动创建数据库及所需数据表。
 
 ## API
@@ -110,7 +128,24 @@ GET /
 可通过浏览器访问：
 
 - 服务状态：`http://localhost:8000`
+- 健康检查：`http://localhost:8000/health`
 - Swagger 文档：`http://localhost:8000/docs`
+
+### 健康检查
+
+```http
+GET /health
+```
+
+返回 `200 OK`：
+
+```json
+{
+  "status": "ok"
+}
+```
+
+该接口不会执行计算、写入数据库或创建 History。
 
 ### 计算接口
 
@@ -252,14 +287,40 @@ SQLAlchemy 表 `calculation_history` 包含：
 
 应用启动时通过 `Base.metadata.create_all()` 创建缺失的数据表。每个 HTTP 请求通过 `get_db()` 获取独立 Session，并在请求结束后关闭。写操作使用 `add`、`commit`、`refresh`，数据库异常时执行 `rollback`。
 
-可通过环境变量覆盖默认数据库连接：
+`DATABASE_URL` 未配置或为空时继续使用上述本地 SQLite 数据库。也可以在本地通过环境变量覆盖连接：
 
 ```powershell
 $env:DATABASE_URL = "sqlite:///./custom-calculator.db"
 uvicorn src.main:app
 ```
 
-该入口也为后续部署更换数据库保留配置空间；Phase 5 不包含 PostgreSQL 迁移。
+生产环境必须通过 Cloud Platform Secret/Environment Variable 设置 PostgreSQL 连接，不能把用户名、密码或完整连接字符串写入源码：
+
+```text
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE_NAME
+```
+
+Render 等平台如果提供 `postgres://` 或 `postgresql://`，应用会自动转换为 SQLAlchemy 使用的 `postgresql+psycopg://`。只有 SQLite Engine 会收到 `check_same_thread=False`；PostgreSQL 不会收到 SQLite 专用参数。
+
+应用每次启动只调用 `Base.metadata.create_all()` 创建缺失表，不会删除、清空或重建已有表。生产 History 因此存储在 PostgreSQL，而不是 Render 临时文件系统中的 `calculator.db`。
+
+## Production Deployment
+
+Render Web Service 建议配置：
+
+- Runtime：Python 3
+- Build Command：`pip install -r requirements.txt`
+- Start Command：`python -m uvicorn src.main:app --host 0.0.0.0 --port $PORT`
+- Health Check Path：`/health`
+
+必须在平台中设置：
+
+- `DATABASE_URL`：托管 PostgreSQL 的连接字符串，作为 Secret 保存。
+- `CORS_ORIGINS`：Frontend 的 Origin；多个值使用逗号分隔。
+
+应用通过平台提供的 `$PORT` 监听，不把生产端口硬编码为 8000。Render 对外提供 HTTPS，Frontend 的生产 API 地址也必须使用对应的 HTTPS URL。
+
+仓库中的 `.env.example` 只包含变量名和 placeholder。项目不会自动读取 `.env`；本地 PowerShell 可使用 `$env:VARIABLE = "value"`，生产环境应使用平台 Environment 页面。
 
 ## 自动测试
 
@@ -267,12 +328,14 @@ uvicorn src.main:app
 pytest
 ```
 
-测试覆盖基础运算、完整表达式解析、历史保存与排序、无效计算不保存、删除、缺失记录、数值类型和文件数据库持久化。
+测试覆盖基础运算、完整表达式解析、历史保存与排序、无效计算不保存、删除、缺失记录、数值类型、文件数据库持久化、部署数据库 URL、CORS 配置和健康检查。
 
 pytest 使用临时目录中的独立 SQLite 数据库，并通过 FastAPI dependency override 替换开发 Session，因此不会创建或污染项目根目录下的 `calculator.db`。
 
-## 后续规划
+当前自动测试结果为 `82 passed`。pytest 使用临时数据库，不会修改开发用 `calculator.db`。
 
-下一阶段将进行 Frontend - Backend Integration。
+## Frontend / Backend Connection
 
-用户登录、分页、搜索、收藏、Clear All、公网部署和 PostgreSQL 迁移不属于当前 Phase 5 的实现范围。
+Frontend 本地通过 `http://localhost:8000` 调用该服务。部署 Backend 后，需要把其公开 HTTPS URL 写入 Frontend 的 `src/js/config.js`，并把 GitHub Pages Origin 写入 Backend 的 `CORS_ORIGINS`。
+
+账号创建、Render Database 创建、Environment Variable 配置和 GitHub Pages 开启都需要由项目维护者在对应平台手工完成。

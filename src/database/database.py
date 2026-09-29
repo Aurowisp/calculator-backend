@@ -12,7 +12,31 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "calculator.db"
 DEFAULT_DATABASE_URL = f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def resolve_database_url(configured_url: str | None) -> str:
+    """Return a local SQLite URL or a psycopg PostgreSQL URL."""
+    if configured_url is None or not configured_url.strip():
+        return DEFAULT_DATABASE_URL
+
+    database_url = configured_url.strip()
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql://",
+            1,
+        )
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg://",
+            1,
+        )
+
+    return database_url
+
+
+DATABASE_URL = resolve_database_url(os.getenv("DATABASE_URL"))
 
 
 class Base(DeclarativeBase):
@@ -20,7 +44,7 @@ class Base(DeclarativeBase):
 
 
 def create_database_engine(database_url: str) -> Engine:
-    """Create an engine with SQLite-specific thread configuration."""
+    """Create an engine with options appropriate for its database."""
     connect_args = (
         {"check_same_thread": False}
         if database_url.startswith("sqlite")
