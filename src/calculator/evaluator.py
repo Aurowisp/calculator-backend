@@ -8,6 +8,7 @@ from src.calculator.parser import (
     BinaryOperationNode,
     ExpressionNode,
     NumberNode,
+    UnaryOperationNode,
 )
 
 
@@ -15,15 +16,37 @@ Number = int | float
 
 
 def evaluate(node: ExpressionNode) -> Number:
-    """Evaluate a parser-produced syntax tree without executing source code."""
+    """Evaluate and normalize a parser-produced syntax tree."""
+    result = _evaluate_node(node)
+
+    if isinstance(result, float) and result.is_integer():
+        return int(result)
+
+    return result
+
+
+def _evaluate_node(node: ExpressionNode) -> Number:
+    """Recursively execute only known syntax-tree node types."""
     if isinstance(node, NumberNode):
         return node.value
+
+    if isinstance(node, UnaryOperationNode):
+        operand = _evaluate_node(node.operand)
+
+        if node.operator == "+":
+            return operand
+        if node.operator == "-":
+            return -operand
+
+        raise InvalidExpressionError(
+            f"Unsupported unary operator: {node.operator!r}"
+        )
 
     if not isinstance(node, BinaryOperationNode):
         raise InvalidExpressionError("Unsupported expression node")
 
-    left = evaluate(node.left)
-    right = evaluate(node.right)
+    left = _evaluate_node(node.left)
+    right = _evaluate_node(node.right)
 
     if node.operator == "+":
         return left + right
@@ -34,7 +57,6 @@ def evaluate(node: ExpressionNode) -> Number:
     if node.operator == "/":
         if right == 0:
             raise DivisionByZeroError("Division by zero")
-        result = left / right
-        return int(result) if result.is_integer() else result
+        return left / right
 
     raise InvalidExpressionError(f"Unsupported operator: {node.operator!r}")

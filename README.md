@@ -4,7 +4,7 @@
 
 这是前后端分离计算器系统的 Backend，使用分层结构组织代码。
 
-当前为 Phase 3 - Implement Calculate API。后端已提供安全的基础四则运算接口；数据库和历史记录功能尚未实现。
+当前为 Phase 4 - Complete Expression Parser。后端已提供安全的完整基础数学表达式解析；数据库和历史记录功能尚未实现。
 
 ## 技术栈
 
@@ -140,7 +140,37 @@ Content-Type: application/json
 
 缺失字段或字段类型错误由 FastAPI/Pydantic 返回 `422 Unprocessable Entity`。
 
-核心计算全部由后端完成。解析器不会使用 `eval()`、`exec()`、`compile()`，也不会把用户表达式作为 Python 程序执行。Phase 3 支持整数、基础四则运算和运算符优先级。
+核心计算全部由后端完成。解析器不会使用 `eval()`、`exec()`、`compile()`，也不会把用户表达式作为 Python 程序执行。
+
+## Expression Parsing
+
+项目使用手写 Recursive Descent Parser（递归下降解析器）。Tokenizer 首先将输入转换为数字、运算符、括号和结束标记；Parser 再按以下语法层级生成受控语法树：
+
+```text
+expression → term (("+" | "-") term)*
+term       → unary (("*" | "/") unary)*
+unary      → ("+" | "-") unary | primary
+primary    → NUMBER | "(" expression ")"
+```
+
+- `expression` 处理低优先级的加减法。
+- `term` 处理高优先级的乘除法。
+- `unary` 区分一元正负号与二元加减法。
+- `primary` 处理整数、小数和嵌套括号。
+
+Parser 必须消费全部 Token，因此 `1 2`、`2(3+4)` 或尾随非法内容不会被部分计算。当前支持：
+
+- 四则运算和从左到右结合
+- 运算符优先级
+- 嵌套括号
+- 整数与小数，包括 `.5`
+- 一元正号和一元负号
+- 空格和 Tab
+- 非法字符及非法语法处理
+- 除零处理
+- 200 字符表达式长度限制
+
+结果使用 Python 的 `int` 或 `float`。数学结果为整数时会返回整数，例如 `8/2` 返回 `4`；其他浮点结果遵循 Python 浮点数精度。
 
 ## 自动测试
 
@@ -148,13 +178,10 @@ Content-Type: application/json
 pytest
 ```
 
-测试覆盖加、减、乘、除、除零、空表达式、非法字符、非法表达式和请求模型校验。
+测试覆盖基础运算、优先级、左结合、括号、小数、一元正负号、空白字符、除零、非法表达式、长度限制和请求模型校验。
 
 ## 后续规划
 
-后续阶段将逐步增加：
+下一阶段将增加 Database history。
 
-- 完整 Expression parser（括号、小数、一元正负号）
-- Database history
-
-数据库、历史记录 API、持久化和部署不属于当前 Phase 3 的实现范围。
+数据库、历史记录 API、持久化和部署不属于当前 Phase 4 的实现范围。

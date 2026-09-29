@@ -1,9 +1,4 @@
-"""Safe parser for basic arithmetic expressions.
-
-The grammar intentionally supports integers and the four basic binary
-operators only. Parentheses, decimal numbers, and unary operators are reserved
-for the next parser phase.
-"""
+"""Tokenizer and recursive descent parser for arithmetic expressions."""
 
 from dataclasses import dataclass
 from typing import TypeAlias
@@ -12,8 +7,22 @@ from src.calculator.exceptions import InvalidExpressionError
 
 
 NUMBER = "NUMBER"
-OPERATOR = "OPERATOR"
-END = "END"
+PLUS = "PLUS"
+MINUS = "MINUS"
+MULTIPLY = "MULTIPLY"
+DIVIDE = "DIVIDE"
+LEFT_PARENTHESIS = "LEFT_PARENTHESIS"
+RIGHT_PARENTHESIS = "RIGHT_PARENTHESIS"
+END_OF_INPUT = "END_OF_INPUT"
+
+SINGLE_CHARACTER_TOKENS = {
+    "+": PLUS,
+    "-": MINUS,
+    "*": MULTIPLY,
+    "/": DIVIDE,
+    "(": LEFT_PARENTHESIS,
+    ")": RIGHT_PARENTHESIS,
+}
 
 
 @dataclass(frozen=True)
@@ -26,9 +35,9 @@ class Token:
 
 @dataclass(frozen=True)
 class NumberNode:
-    """Represent an integer literal in the syntax tree."""
+    """Represent an integer or decimal literal in the syntax tree."""
 
-    value: int
+    value: int | float
 
 
 @dataclass(frozen=True)
@@ -40,7 +49,17 @@ class BinaryOperationNode:
     right: "ExpressionNode"
 
 
-ExpressionNode: TypeAlias = NumberNode | BinaryOperationNode
+@dataclass(frozen=True)
+class UnaryOperationNode:
+    """Represent a unary plus or minus operation in the syntax tree."""
+
+    operator: str
+    operand: "ExpressionNode"
+
+
+ExpressionNode: TypeAlias = (
+    NumberNode | BinaryOperationNode | UnaryOperationNode
+)
 
 
 def tokenize(expression: str) -> list[Token]:
@@ -55,18 +74,13 @@ def tokenize(expression: str) -> list[Token]:
             position += 1
             continue
 
-        if character in "0123456789":
-            start = position
-            while (
-                position < len(expression)
-                and expression[position] in "0123456789"
-            ):
-                position += 1
-            tokens.append(Token(NUMBER, expression[start:position]))
+        if character in "0123456789.":
+            number, position = _read_number(expression, position)
+            tokens.append(Token(NUMBER, number))
             continue
 
-        if character in "+-*/":
-            tokens.append(Token(OPERATOR, character))
+        if character in SINGLE_CHARACTER_TOKENS:
+            tokens.append(Token(SINGLE_CHARACTER_TOKENS[character], character))
             position += 1
             continue
 
@@ -74,8 +88,36 @@ def tokenize(expression: str) -> list[Token]:
             f"Invalid character at position {position}: {character!r}"
         )
 
-    tokens.append(Token(END, ""))
+    tokens.append(Token(END_OF_INPUT, ""))
     return tokens
+
+
+def _read_number(expression: str, start: int) -> tuple[str, int]:
+    """Read one integer or decimal token, including optional leading dot."""
+    position = start
+    digits_before_dot = 0
+    digits_after_dot = 0
+
+    while (
+        position < len(expression)
+        and expression[position] in "0123456789"
+    ):
+        digits_before_dot += 1
+        position += 1
+
+    if position < len(expression) and expression[position] == ".":
+        position += 1
+        while (
+            position < len(expression)
+            and expression[position] in "0123456789"
+        ):
+            digits_after_dot += 1
+            position += 1
+
+    if digits_before_dot == 0 and digits_after_dot == 0:
+        raise InvalidExpressionError(f"Invalid number at position {start}")
+
+    return expression[start:position], position
 
 
 class Parser:
@@ -87,12 +129,12 @@ class Parser:
 
     def parse(self) -> ExpressionNode:
         """Parse all tokens into a complete expression tree."""
-        if self._current.kind == END:
+        if self._current.kind == END_OF_INPUT:
             raise InvalidExpressionError("Expression must not be empty")
 
         node = self._parse_expression()
 
-        if self._current.kind != END:
+        if self._current.kind != END_OF_INPUT:
             raise InvalidExpressionError(
                 f"Unexpected token: {self._current.value!r}"
             )
@@ -107,9 +149,10 @@ class Parser:
         self._position += 1
 
     def _parse_expression(self) -> ExpressionNode:
+        """Parse addition and subtraction, the lowest-precedence operators."""
         node = self._parse_term()
 
-        while self._current.value in {"+", "-"}:
+        while self._current.kind in {PLUS, MINUS}:
             operator = self._current.value
             self._advance()
             node = BinaryOperationNode(
@@ -121,30 +164,61 @@ class Parser:
         return node
 
     def _parse_term(self) -> ExpressionNode:
-        node = self._parse_factor()
+        """Parse multiplication and division before additive operators."""
+        node = self._parse_unary()
 
-        while self._current.value in {"*", "/"}:
+        while self._current.kind in {MULTIPLY, DIVIDE}:
             operator = self._current.value
             self._advance()
             node = BinaryOperationNode(
                 left=node,
                 operator=operator,
-                right=self._parse_factor(),
+                right=self._parse_unary(),
             )
 
         return node
 
-    def _parse_factor(self) -> ExpressionNode:
-        token = self._current
-
-        if token.kind != NUMBER:
-            token_description = token.value or "end of expression"
-            raise InvalidExpressionError(
-                f"Expected a number, received {token_description!r}"
+    def _parse_unary(self) -> ExpressionNode:
+        """Bind unary signs more tightly than every binary operator."""
+        if self._current.kind in {PLUS, MINUS}:
+            operator = self._current.value
+            self._advance()
+            return UnaryOperationNode(
+                operator=operator,
+                operand=self._parse_unary(),
             )
 
-        self._advance()
-        return NumberNode(value=int(token.value))
+        return self._parse_primary()
+
+    def _parse_primary(self) -> ExpressionNode:
+        """Parse a number or a parenthesized nested expression."""
+        token = self._current
+
+        if token.kind == NUMBER:
+            self._advance()
+            return NumberNode(value=_convert_number(token.value))
+
+        if token.kind == LEFT_PARENTHESIS:
+            self._advance()
+            node = self._parse_expression()
+
+            if self._current.kind != RIGHT_PARENTHESIS:
+                raise InvalidExpressionError("Missing closing parenthesis")
+
+            self._advance()
+            return node
+
+        token_description = token.value or "end of expression"
+        raise InvalidExpressionError(
+            f"Expected a number or '(', received {token_description!r}"
+        )
+
+
+def _convert_number(value: str) -> int | float:
+    """Convert a validated numeric token to a JSON-compatible number."""
+    if "." in value:
+        return float(value)
+    return int(value)
 
 
 def parse(expression: str) -> ExpressionNode:

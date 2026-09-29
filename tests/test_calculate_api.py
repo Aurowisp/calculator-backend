@@ -1,4 +1,6 @@
-"""API tests for the Phase 3 calculation endpoint."""
+"""API tests for the complete arithmetic expression parser."""
+
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,9 +18,33 @@ client = TestClient(app)
         ("5-3", 2),
         ("4*6", 24),
         ("8/2", 4),
+        ("1+2*3", 7),
+        ("10-6/2", 7),
+        ("8/2*3", 12),
+        ("2*3+4*5", 26),
+        ("8/4/2", 1),
+        ("10-3-2", 5),
+        ("(1+2)*3", 9),
+        ("1+(2*3)", 7),
+        ("((1+2)*3)+4", 13),
+        ("2*(3+(4*5))", 46),
+        ("1.5+2.3", 3.8),
+        ("5/2", 2.5),
+        (".5+1.5", 2),
+        ("-5+8", 3),
+        ("3*-2", -6),
+        ("3--2", 5),
+        ("-(2+3)", -5),
+        ("-(-3)", 3),
+        ("+5", 5),
+        ("2*+3", 6),
+        (" 1 +\t2 * 3 ", 7),
     ],
 )
-def test_calculate_success(expression: str, expected_result: int) -> None:
+def test_calculate_success(
+    expression: str,
+    expected_result: int | float,
+) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": expression},
@@ -33,19 +59,58 @@ def test_calculate_success(expression: str, expected_result: int) -> None:
 
 
 @pytest.mark.parametrize(
-    ("expression", "expected_message"),
+    "expression",
     [
-        ("10/0", "Division by zero"),
-        ("", "Expression must not be empty"),
-        ("   ", "Expression must not be empty"),
-        ("abc", "Invalid character"),
-        ("1+", "Expected a number"),
+        "abc",
+        "1+a",
+        "1+*2",
+        "1++*2",
+        "*",
+        "/",
+        "()",
+        "( )",
+        "(1+2",
+        "1+2)",
+        "((1+2)",
+        "1.2.3",
+        "..",
+        "5..2",
+        "1 2",
+        "2(3+4)",
     ],
 )
-def test_calculate_rejects_invalid_expression(
-    expression: str,
-    expected_message: str,
-) -> None:
+def test_calculate_rejects_invalid_expression(expression: str) -> None:
+    response = client.post(
+        "/api/calculate",
+        json={"expression": expression},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "success": False,
+        "message": "Invalid expression",
+    }
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["10/0", "1/(2-2)", "10/(3-3)"],
+)
+def test_calculate_rejects_division_by_zero(expression: str) -> None:
+    response = client.post(
+        "/api/calculate",
+        json={"expression": expression},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "success": False,
+        "message": "Division by zero",
+    }
+
+
+@pytest.mark.parametrize("expression", ["", "   ", "\t"])
+def test_calculate_rejects_empty_expression(expression: str) -> None:
     response = client.post(
         "/api/calculate",
         json={"expression": expression},
@@ -53,26 +118,22 @@ def test_calculate_rejects_invalid_expression(
 
     assert response.status_code == 400
     assert response.json()["success"] is False
-    assert expected_message in response.json()["message"]
+    assert response.json()["message"] == "Expression must not be empty"
 
 
-def test_calculate_requires_expression_field() -> None:
-    response = client.post("/api/calculate", json={})
-
-    assert response.status_code == 422
-
-
-def test_calculate_rejects_non_string_expression() -> None:
-    response = client.post("/api/calculate", json={"expression": 123})
-
-    assert response.status_code == 422
-
-
-def test_calculate_observes_operator_precedence() -> None:
+def test_calculate_rejects_expression_over_length_limit() -> None:
     response = client.post(
         "/api/calculate",
-        json={"expression": "1+2*3"},
+        json={"expression": "1" * 201},
     )
 
-    assert response.status_code == 200
-    assert response.json()["result"] == 7
+    assert response.status_code == 400
+    assert response.json()["success"] is False
+    assert "200 characters" in response.json()["message"]
+
+
+@pytest.mark.parametrize("body", [{}, {"expression": 123}])
+def test_calculate_validates_request_model(body: dict[str, Any]) -> None:
+    response = client.post("/api/calculate", json=body)
+
+    assert response.status_code == 422
