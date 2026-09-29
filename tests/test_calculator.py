@@ -30,6 +30,27 @@ def test_parser_and_evaluator(
 
 
 @pytest.mark.parametrize(
+    ("expression", "expected_result"),
+    [
+        ("2.3+5.6", 7.9),
+        ("0.1+0.2", 0.3),
+        ("1.2-1.1", 0.1),
+        ("0.1*0.2", 0.02),
+        ("0.3/0.1", 3),
+        (".1+.2", 0.3),
+        ("2.5+0.5", 3),
+        ("1/2", 0.5),
+        ("1/3", 0.3333333333333333),
+    ],
+)
+def test_decimal_arithmetic_avoids_binary_float_artifacts(
+    expression: str,
+    expected_result: int | float,
+) -> None:
+    assert evaluate(parse(expression)) == expected_result
+
+
+@pytest.mark.parametrize(
     "expression",
     ["abc", "()", "(1+2", "1+2)", "1.2.3", "1 2"],
 )

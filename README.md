@@ -320,6 +320,8 @@ Render Web Service 建议配置：
 
 应用通过平台提供的 `$PORT` 监听，不把生产端口硬编码为 8000。Render 对外提供 HTTPS，Frontend 的生产 API 地址也必须使用对应的 HTTPS URL。
 
+Free hosting 长时间无访问后，第一次请求可能因实例 cold start 产生额外等待；项目不会使用定时 ping、self-request 或 keep-alive 请求规避平台休眠。
+
 仓库中的 `.env.example` 只包含变量名和 placeholder。项目不会自动读取 `.env`；本地 PowerShell 可使用 `$env:VARIABLE = "value"`，生产环境应使用平台 Environment 页面。
 
 ## 自动测试

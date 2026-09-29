@@ -5,6 +5,20 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+
+def test_calculate_api_preserves_decimal_precision(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/calculate",
+        json={"expression": "2.3+5.6"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == 7.9
+    assert isinstance(response.json()["result"], float)
+
+
 @pytest.mark.parametrize(
     ("expression", "expected_result"),
     [

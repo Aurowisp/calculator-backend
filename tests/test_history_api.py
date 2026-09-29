@@ -30,6 +30,23 @@ def test_successful_calculation_saves_history(client: TestClient) -> None:
     assert history_response.json()[0]["created_at"]
 
 
+def test_decimal_result_is_saved_without_binary_float_artifact(
+    client: TestClient,
+) -> None:
+    calculate_response = client.post(
+        "/api/calculate",
+        json={"expression": "2.3+5.6"},
+    )
+    history_response = client.get("/api/history")
+
+    assert calculate_response.status_code == 200
+    assert calculate_response.json()["result"] == 7.9
+    assert history_response.status_code == 200
+    assert history_response.json()[0]["expression"] == "2.3+5.6"
+    assert history_response.json()[0]["result"] == 7.9
+    assert isinstance(history_response.json()[0]["result"], float)
+
+
 def test_multiple_records_are_returned_newest_first(
     client: TestClient,
 ) -> None:

@@ -1,6 +1,7 @@
 """Tokenizer and recursive descent parser for arithmetic expressions."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TypeAlias
 
 from src.calculator.exceptions import InvalidExpressionError
@@ -37,7 +38,7 @@ class Token:
 class NumberNode:
     """Represent an integer or decimal literal in the syntax tree."""
 
-    value: int | float
+    value: Decimal
 
 
 @dataclass(frozen=True)
@@ -214,11 +215,9 @@ class Parser:
         )
 
 
-def _convert_number(value: str) -> int | float:
-    """Convert a validated numeric token to a JSON-compatible number."""
-    if "." in value:
-        return float(value)
-    return int(value)
+def _convert_number(value: str) -> Decimal:
+    """Build an exact decimal value from a validated source token."""
+    return Decimal(value)
 
 
 def parse(expression: str) -> ExpressionNode:

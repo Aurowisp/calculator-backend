@@ -1,5 +1,7 @@
 """Evaluator for calculator syntax trees."""
 
+from decimal import Decimal, localcontext
+
 from src.calculator.exceptions import (
     DivisionByZeroError,
     InvalidExpressionError,
@@ -13,19 +15,22 @@ from src.calculator.parser import (
 
 
 Number = int | float
+DECIMAL_PRECISION = 256
 
 
 def evaluate(node: ExpressionNode) -> Number:
     """Evaluate and normalize a parser-produced syntax tree."""
-    result = _evaluate_node(node)
+    with localcontext() as context:
+        context.prec = DECIMAL_PRECISION
+        result = _evaluate_node(node)
 
-    if isinstance(result, float) and result.is_integer():
+    if result == result.to_integral_value():
         return int(result)
 
-    return result
+    return float(result)
 
 
-def _evaluate_node(node: ExpressionNode) -> Number:
+def _evaluate_node(node: ExpressionNode) -> Decimal:
     """Recursively execute only known syntax-tree node types."""
     if isinstance(node, NumberNode):
         return node.value
