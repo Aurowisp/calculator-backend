@@ -1,44 +1,105 @@
 # Backend Code Style
 
-Backend 代码遵循 [PEP 8 Python Style Guide](https://peps.python.org/pep-0008/)。
+This project follows [PEP 8](https://peps.python.org/pep-0008/) and uses type
+hints and explicit layer boundaries to keep the FastAPI service maintainable.
 
-## 1. 命名规范
+## Naming
 
-- 模块、函数、方法和变量使用 `snake_case`。
-- 类使用 `CapWords`，例如 `CalculatorService`。
-- 常量使用 `UPPER_SNAKE_CASE`。
-- 命名应准确表达职责，避免不明确的缩写。
-- 内部使用的非公开成员以单下划线开头。
+- Use `snake_case` for modules, variables, functions, methods, and route handler
+  names.
+- Use `PascalCase` for classes, Pydantic schemas, and exception types.
+- Use `UPPER_SNAKE_CASE` for module-level constants.
+- Prefix internal helpers with a single underscore when they are not part of a
+  module's public interface.
+- Choose domain-specific names such as `database_session`, `history_id`, and
+  `calculate_expression`.
 
-## 2. 缩进规范
+## Formatting
 
-- 每级缩进使用 4 个空格，不使用 Tab。
-- 建议每行不超过 79 个字符。
-- 顶级函数和类之间保留两个空行。
-- 运算符和逗号后按 PEP 8 要求使用空格。
+- Use 4 spaces for indentation. Do not use tabs.
+- Keep lines at 79 characters when practical.
+- Put two blank lines between top-level definitions.
+- Use one blank line between related methods inside a class.
+- Include trailing commas in multiline collections and calls.
+- Keep source files encoded as UTF-8.
+- End every text file with one newline.
 
-## 3. 函数规范
+## Imports
 
-- 函数保持单一职责，并使用动词或动词短语命名。
-- 公共函数应声明参数和返回值类型。
-- API 路由函数优先使用 `async def`。
-- 避免可变对象作为默认参数。
-- 复杂函数应拆分为可测试的小型函数。
+Group imports in this order, separated by blank lines:
 
-## 4. 注释规范
+1. Python standard library
+2. Third-party packages
+3. Local application modules
 
-- 模块、类和公共函数使用文档字符串说明职责。
-- 注释重点解释设计原因、边界和约束，不重复代码含义。
-- 待办事项应说明后续阶段或关联任务，避免无上下文的 `TODO`。
-- 注释和代码发生变化时应同步更新。
+Use absolute imports from `src`. Do not use wildcard imports. Import models for
+SQLAlchemy metadata registration only where initialization requires them, and
+document that intentional side effect.
 
-## 5. 文件组织规范
+## Type Hints and Functions
 
-- `main.py` 仅负责应用创建、中间件配置和 Router 注册。
-- `controller` 仅负责 HTTP 接口和请求响应协调。
-- `service` 负责业务用例，避免业务逻辑写入 Controller。
-- `calculator` 负责表达式领域功能。
-- `model` 负责数据模型。
-- `database` 负责数据库配置和连接管理。
-- 导入顺序为标准库、第三方库、本地模块，各组之间保留空行。
-- 禁止循环导入和跨层绕过调用。
+- Type all public function parameters and return values.
+- Keep functions focused on one responsibility.
+- Prefer explicit return types over implicit `Any`.
+- Use `collections.abc` types for iterators and generators.
+- Use FastAPI dependencies for request-scoped database sessions.
+- Close resources deterministically, including error paths.
+
+## Documentation and Comments
+
+- Give each module a short English docstring.
+- Give public functions, classes, and non-obvious helpers concise docstrings.
+- Describe behavior and constraints, not syntax already visible in the code.
+- Use comments sparingly for security limits, rollback behavior, compatibility,
+  or other decisions that are not self-evident.
+- Keep code, identifiers, comments, API text, and documentation in English.
+
+## Architecture
+
+- Controllers translate HTTP requests and exceptions into API responses.
+- Services coordinate domain work and transaction boundaries.
+- The calculator package owns tokenization, parsing, and evaluation.
+- Models own Pydantic schemas and SQLAlchemy entities.
+- The database package owns engines, sessions, and initialization.
+
+Do not place parsing in controllers, HTTP response construction in services, or
+business workflows in ORM models.
+
+## FastAPI and API Design
+
+- Define routers outside `main.py` and register them in the application entry
+  point.
+- Declare request and response schemas with Pydantic.
+- Document non-success responses on each route.
+- Return consistent JSON error objects.
+- Do not expose exception details, SQL statements, credentials, or stack traces
+  to clients.
+- Keep health checks side-effect free.
+
+## Database Practices
+
+- Obtain sessions through `get_db()`.
+- Commit only after the complete operation succeeds.
+- Roll back after a failed write.
+- Map persistence errors to service exceptions before they reach controllers.
+- Keep database URLs and credentials in environment variables.
+- Never commit SQLite database files or generated test databases.
+
+## Calculator Safety
+
+- Never use `eval()`, `exec()`, `compile()`, or dynamic code generation.
+- Keep grammar limits explicit and covered by tests.
+- Raise domain exceptions for invalid syntax, unsupported input, and division by
+  zero.
+- Use `Decimal` for internal arithmetic and make API-boundary conversion
+  deliberate.
+
+## Tests
+
+- Use `pytest` and descriptive test names.
+- Test public behavior and important failure paths.
+- Keep tests independent through isolated temporary databases and dependency
+  overrides.
+- Verify rollback and session cleanup when persistence fails.
+- Add regression tests with every bug fix.
+- Run `python -m pytest -q` before release.

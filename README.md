@@ -1,123 +1,141 @@
 # Calculator Backend
 
-## 项目介绍
+## Overview
 
-这是前后端分离计算器系统的 Backend，使用分层结构组织代码。
+This repository contains the API and persistence service for a
+front-end/back-end separated calculator course project. It validates and parses
+expressions, evaluates them without dynamic code execution, stores successful
+calculations, and exposes history operations to the separate browser client.
 
-当前为 Phase 8 - Production Deployment Preparation。后端提供安全的数学表达式计算，并通过 SQLAlchemy 持久化成功计算的历史记录。本地默认使用 SQLite，生产环境通过 `DATABASE_URL` 连接 PostgreSQL。
+## Live Services
 
-## 技术栈
+- Backend API: <https://calculator-backend-1m81.onrender.com>
+- Health check: <https://calculator-backend-1m81.onrender.com/health>
+- Swagger UI: <https://calculator-backend-1m81.onrender.com/docs>
+- Backend repository: <https://github.com/Aurowisp/calculator-backend>
+- Frontend: <https://aurowisp.github.io/calculator-frontend/>
+- Frontend repository: <https://github.com/Aurowisp/calculator-frontend>
+
+## Technology
 
 - Python 3.11
 - FastAPI
 - Uvicorn
-- SQLAlchemy
-- SQLite（本地开发）
-- PostgreSQL + psycopg（生产环境）
+- SQLAlchemy 2
+- Pydantic 2
+- SQLite for local development
+- PostgreSQL support through `psycopg`
+- Pytest
 
-## 架构
-
-HTTP 请求由 FastAPI Controller 接收，Service 负责用例编排，Calculator 模块负责安全解析和计算，SQLAlchemy Model/Database 层负责持久化。Frontend 与 Backend 仅通过 HTTPS/JSON API 通信；Production History 的唯一数据源是 PostgreSQL。
-
-## 项目结构
+## Architecture
 
 ```text
 calculator-backend/
-├── .python-version              # 部署使用的 Python 版本
-├── .env.example                 # 无敏感信息的环境变量示例
-├── src/
-│   ├── main.py                    # FastAPI 入口、中间件和 Router 注册
-│   ├── controller/                # HTTP API 路由层
-│   │   ├── calculator_controller.py
-│   │   └── history_controller.py
-│   ├── service/                   # 业务用例协调层
-│   │   ├── calculator_service.py
-│   │   └── history_service.py
-│   ├── calculator/                # 安全的表达式解析与执行模块
-│   │   ├── exceptions.py
-│   │   ├── parser.py
-│   │   └── evaluator.py
-│   ├── model/                     # ORM 模型与 Pydantic API 模型
-│   │   ├── calculation.py
-│   │   ├── history.py
-│   │   └── history_schema.py
-│   └── database/                  # SQLAlchemy 配置与 Session 管理
-│       └── database.py
-├── requirements.txt
-├── README.md
-├── codestyle.md
-├── tests/
-│   ├── conftest.py
-│   ├── test_calculate_api.py
-│   ├── test_calculator.py
-│   └── test_history_api.py
-└── .gitignore
+|-- src/
+|   |-- main.py                 # FastAPI app, CORS, lifespan, health routes
+|   |-- calculator/
+|   |   |-- parser.py           # Tokenization and recursive-descent parsing
+|   |   |-- evaluator.py        # Decimal-based AST evaluation
+|   |   `-- exceptions.py       # Domain exceptions
+|   |-- controller/
+|   |   |-- calculator_controller.py
+|   |   `-- history_controller.py
+|   |-- service/
+|   |   |-- calculator_service.py
+|   |   `-- history_service.py
+|   |-- model/
+|   |   |-- calculation.py      # Calculation request/response schemas
+|   |   |-- history.py          # SQLAlchemy history model
+|   |   `-- history_schema.py   # History API schemas
+|   `-- database/
+|       `-- database.py         # Engine, sessions, and table initialization
+|-- tests/
+|-- requirements.txt
+|-- .env.example
+|-- .python-version
+|-- README.md
+|-- codestyle.md
+`-- .gitignore
 ```
 
-各 Python 子目录均包含 `__init__.py`，以便作为独立包导入。
+Layer responsibilities:
 
-### 分层职责
+- **Controller** defines HTTP routes, dependencies, response schemas, and
+  status-code mapping.
+- **Service** coordinates calculation and persistence workflows.
+- **Calculator** tokenizes, parses, and evaluates expression syntax.
+- **Model** defines API schemas and the database entity.
+- **Database** owns connection configuration, sessions, and initialization.
 
-- `controller`：接收 HTTP 请求并定义 API 路由。
-- `service`：编排计算与历史记录业务，避免业务逻辑进入 Controller。
-- `calculator`：负责安全的表达式解析和计算执行，不依赖 FastAPI。
-- `model`：定义 SQLAlchemy ORM 模型和 Pydantic API 模型。
-- `database`：配置 SQLAlchemy Engine，并管理数据库 Session。
+## Local Setup
 
-## 环境配置
-
-项目已通过 `.python-version` 固定 Python 3.11。推荐在项目根目录创建独立虚拟环境：
-
-```bash
-python -m venv venv
-```
-
-Windows 激活命令：
+### Create a Virtual Environment
 
 ```powershell
+python -m venv venv
 venv\Scripts\activate
 ```
 
-## 安装
+On macOS or Linux:
 
-激活虚拟环境后安装最小依赖：
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 启动
+### Configure the Environment
 
-在 `calculator-backend` 项目根目录运行：
+The service reads configuration from environment variables. It does not load a
+`.env` file automatically. Copy values from `.env.example` into your shell or
+hosting provider as needed.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Local `calculator.db` SQLite file | Database connection |
+| `CORS_ORIGINS` | Local frontend origins | Comma-separated allowed origins |
+
+PowerShell example:
+
+```powershell
+$env:DATABASE_URL = "sqlite:///./calculator.db"
+$env:CORS_ORIGINS = "http://localhost:5500,https://aurowisp.github.io"
+```
+
+PostgreSQL URLs beginning with `postgres://` or `postgresql://` are normalized
+to SQLAlchemy's `postgresql+psycopg://` driver URL.
+
+### Initialize the Database
+
+No separate migration command is required for the current schema. The FastAPI
+lifespan calls `initialize_database()` at startup and creates missing tables.
+
+The history table stores:
+
+- `id`
+- `expression`
+- `result`
+- `created_at`
+
+### Start the Server
 
 ```bash
 uvicorn src.main:app --reload
 ```
 
-服务默认运行在 `http://localhost:8000`。开发环境 CORS 当前允许来自 `http://localhost:5500` 和 `http://127.0.0.1:5500` 的前端请求；部署阶段可在同一配置处加入正式 Frontend Origin。
+Open:
 
-本地未配置 `CORS_ORIGINS` 时，默认允许：
+- API root: <http://localhost:8000/>
+- Health check: <http://localhost:8000/health>
+- Swagger UI: <http://localhost:8000/docs>
+- OpenAPI schema: <http://localhost:8000/openapi.json>
 
-- `http://localhost:5500`
-- `http://127.0.0.1:5500`
-
-生产环境通过逗号分隔的 `CORS_ORIGINS` 配置 GitHub Pages Origin，不能包含 repository path。例如：
-
-```text
-CORS_ORIGINS=https://YOUR_GITHUB_USERNAME.github.io
-```
-
-首次启动时会自动创建数据库及所需数据表。
-
-## API
-
-当前接口：
-
-```http
-GET /
-```
-
-预期响应：
+Expected root response:
 
 ```json
 {
@@ -125,98 +143,56 @@ GET /
 }
 ```
 
-可通过浏览器访问：
+## API Reference
 
-- 服务状态：`http://localhost:8000`
-- 健康检查：`http://localhost:8000/health`
-- Swagger 文档：`http://localhost:8000/docs`
+### Calculate
 
-### 健康检查
+`POST /api/calculate`
 
-```http
-GET /health
-```
-
-返回 `200 OK`：
+Request:
 
 ```json
 {
-  "status": "ok"
+  "expression": "(1.2+3.4)*2"
 }
 ```
 
-该接口不会执行计算、写入数据库或创建 History。
-
-### 计算接口
-
-```http
-POST /api/calculate
-Content-Type: application/json
-```
-
-请求：
-
-```json
-{
-  "expression": "1+2"
-}
-```
-
-成功响应：
+Successful response:
 
 ```json
 {
   "success": true,
-  "expression": "1+2",
-  "result": 3
+  "expression": "(1.2+3.4)*2",
+  "result": 9.2
 }
 ```
 
-每次成功计算都会写入数据库；非法表达式、空表达式和除零不会生成历史记录。
+A successful calculation is saved before the response is returned. Invalid
+syntax and division by zero return `400`. A persistence failure returns `500`
+and is not reported as a successful calculation.
 
-无效表达式返回 `400 Bad Request`：
+### List History
 
-```json
-{
-  "success": false,
-  "message": "Invalid expression"
-}
-```
+`GET /api/history`
 
-缺失字段或字段类型错误由 FastAPI/Pydantic 返回 `422 Unprocessable Entity`。
-
-### 获取历史记录
-
-```http
-GET /api/history
-```
-
-返回按 ID 从大到小排列的记录，最新记录在前。没有记录时返回 `200 OK` 和空数组：
-
-```json
-[]
-```
-
-包含记录时返回：
+Returns history records ordered newest first.
 
 ```json
 [
   {
-    "id": 3,
-    "expression": "(1+2)*3",
-    "result": 9,
-    "created_at": "2026-10-01T10:22:00"
+    "id": 1,
+    "expression": "1+2",
+    "result": 3,
+    "created_at": "2026-10-03T10:00:00"
   }
 ]
 ```
 
-### 删除历史记录
+### Delete History
 
-```http
-DELETE /api/history/{id}
-```
+`DELETE /api/history/{id}`
 
-成功响应：
+Successful response:
 
 ```json
 {
@@ -225,119 +201,116 @@ DELETE /api/history/{id}
 }
 ```
 
-记录不存在时返回 `404 Not Found`：
+A missing record returns `404`.
 
-```json
-{
-  "success": false,
-  "message": "History record not found"
-}
-```
+Expected API status codes:
 
-### HTTP 状态码
+| Status | Meaning |
+| --- | --- |
+| `200` | Calculation, history query, or deletion succeeded |
+| `400` | The expression is invalid or attempts division by zero |
+| `404` | The requested history record does not exist |
+| `422` | The request body or path parameter failed validation |
+| `500` | Persistence or another internal operation failed |
 
-- `200`：计算、查询或删除成功。
-- `400`：数学表达式无效或除零。
-- `404`：要删除的历史记录不存在。
-- `422`：请求体或路径参数未通过 FastAPI/Pydantic 校验。
-- `500`：数据库等内部操作失败；响应不会暴露 SQL 或服务器路径。
+## Expression Rules
 
-核心计算全部由后端完成。解析器不会使用 `eval()`、`exec()`、`compile()`，也不会把用户表达式作为 Python 程序执行。
+Supported syntax:
 
-## Expression Parsing
+- `+`, `-`, `*`, and `/`
+- parentheses
+- decimal values
+- unary `+` and `-`
+- standard operator precedence
 
-项目使用手写 Recursive Descent Parser（递归下降解析器）。Tokenizer 首先将输入转换为数字、运算符、括号和结束标记；Parser 再按以下语法层级生成受控语法树：
+The maximum accepted expression length is 200 characters. Whitespace is
+allowed, but implicit multiplication such as `2(3+4)` is not supported.
 
-```text
-expression → term (("+" | "-") term)*
-term       → unary (("*" | "/") unary)*
-unary      → ("+" | "-") unary | primary
-primary    → NUMBER | "(" expression ")"
-```
-
-- `expression` 处理低优先级的加减法。
-- `term` 处理高优先级的乘除法。
-- `unary` 区分一元正负号与二元加减法。
-- `primary` 处理整数、小数和嵌套括号。
-
-Parser 必须消费全部 Token，因此 `1 2`、`2(3+4)` 或尾随非法内容不会被部分计算。当前支持：
-
-- 四则运算和从左到右结合
-- 运算符优先级
-- 嵌套括号
-- 整数与小数，包括 `.5`
-- 一元正号和一元负号
-- 空格和 Tab
-- 非法字符及非法语法处理
-- 除零处理
-- 200 字符表达式长度限制
-
-结果使用 Python 的 `int` 或 `float`。数学结果为整数时会返回整数，例如 `8/2` 返回 `4`；其他浮点结果遵循 Python 浮点数精度。
-
-## Database
-
-本地开发使用项目根目录下的 `calculator.db`。该文件在应用启动时自动创建，并已由 `.gitignore` 排除，不应提交到版本控制。
-
-SQLAlchemy 表 `calculation_history` 包含：
-
-- `id`：整数主键和索引。
-- `expression`：非空表达式文本。
-- `result`：非空 JSON 数值，读取后保持 `int` 或 `float`。
-- `created_at`：非空 UTC 创建时间。
-
-应用启动时通过 `Base.metadata.create_all()` 创建缺失的数据表。每个 HTTP 请求通过 `get_db()` 获取独立 Session，并在请求结束后关闭。写操作使用 `add`、`commit`、`refresh`，数据库异常时执行 `rollback`。
-
-`DATABASE_URL` 未配置或为空时继续使用上述本地 SQLite 数据库。也可以在本地通过环境变量覆盖连接：
-
-```powershell
-$env:DATABASE_URL = "sqlite:///./custom-calculator.db"
-uvicorn src.main:app
-```
-
-生产环境必须通过 Cloud Platform Secret/Environment Variable 设置 PostgreSQL 连接，不能把用户名、密码或完整连接字符串写入源码：
+The parser follows this grammar:
 
 ```text
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE_NAME
+expression -> term (("+" | "-") term)*
+term       -> unary (("*" | "/") unary)*
+unary      -> ("+" | "-") unary | primary
+primary    -> NUMBER | "(" expression ")"
 ```
 
-Render 等平台如果提供 `postgres://` 或 `postgresql://`，应用会自动转换为 SQLAlchemy 使用的 `postgresql+psycopg://`。只有 SQLite Engine 会收到 `check_same_thread=False`；PostgreSQL 不会收到 SQLite 专用参数。
+The parser is a bounded recursive-descent parser. It rejects malformed or
+unsupported input and does not use `eval()`, `exec()`, `compile()`, or other
+dynamic code execution.
 
-应用每次启动只调用 `Base.metadata.create_all()` 创建缺失表，不会删除、清空或重建已有表。生产 History 因此存储在 PostgreSQL，而不是 Render 临时文件系统中的 `calculator.db`。
+Evaluation uses Python `Decimal` with an internal precision of 256 digits.
+Integral API results are serialized as JSON integers; non-integral results are
+serialized as JSON floating-point values at the API boundary. This avoids the
+common binary artifact for cases such as `0.1 + 0.2` while preserving a simple
+JSON contract for the frontend.
 
-## Production Deployment
+## CORS
 
-Render Web Service 建议配置：
+Without `CORS_ORIGINS`, these development origins are allowed:
 
-- Runtime：Python 3
-- Build Command：`pip install -r requirements.txt`
-- Start Command：`python -m uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-- Health Check Path：`/health`
+- `http://localhost:5500`
+- `http://127.0.0.1:5500`
 
-必须在平台中设置：
+For deployment, set the exact comma-separated frontend origins. Do not include
+paths. Trailing slashes are normalized by the application.
 
-- `DATABASE_URL`：托管 PostgreSQL 的连接字符串，作为 Secret 保存。
-- `CORS_ORIGINS`：Frontend 的 Origin；多个值使用逗号分隔。
+## Tests
 
-应用通过平台提供的 `$PORT` 监听，不把生产端口硬编码为 8000。Render 对外提供 HTTPS，Frontend 的生产 API 地址也必须使用对应的 HTTPS URL。
-
-Free hosting 长时间无访问后，第一次请求可能因实例 cold start 产生额外等待；项目不会使用定时 ping、self-request 或 keep-alive 请求规避平台休眠。
-
-仓库中的 `.env.example` 只包含变量名和 placeholder。项目不会自动读取 `.env`；本地 PowerShell 可使用 `$env:VARIABLE = "value"`，生产环境应使用平台 Environment 页面。
-
-## 自动测试
+Run from the repository root with the virtual environment active:
 
 ```bash
-pytest
+python -m pytest -q
 ```
 
-测试覆盖基础运算、完整表达式解析、历史保存与排序、无效计算不保存、删除、缺失记录、数值类型、文件数据库持久化、部署数据库 URL、CORS 配置和健康检查。
+Current verified result: **93 tests passed**.
 
-pytest 使用临时目录中的独立 SQLite 数据库，并通过 FastAPI dependency override 替换开发 Session，因此不会创建或污染项目根目录下的 `calculator.db`。
+The suite covers:
 
-当前自动测试结果为 `82 passed`。pytest 使用临时数据库，不会修改开发用 `calculator.db`。
+- parser and evaluator behavior
+- operator precedence, parentheses, decimals, and unary operators
+- invalid expressions, limits, and division by zero
+- calculation API schemas and error responses
+- history persistence, ordering, deletion, and rollback paths
+- CORS and deployment configuration
+- health checks and internal error handling
 
-## Frontend / Backend Connection
+One upstream Starlette deprecation warning may appear with the installed
+dependency set; it does not affect the result.
 
-Frontend 本地通过 `http://localhost:8000` 调用该服务。部署 Backend 后，需要把其公开 HTTPS URL 写入 Frontend 的 `src/js/config.js`，并把 GitHub Pages Origin 写入 Backend 的 `CORS_ORIGINS`。
+## Deployment
 
-账号创建、Render Database 创建、Environment Variable 配置和 GitHub Pages 开启都需要由项目维护者在对应平台手工完成。
+The service is suitable for a Python web host such as Render.
+
+Recommended commands:
+
+```text
+Build: pip install -r requirements.txt
+Start: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+Health path: /health
+```
+
+Set at least:
+
+- `DATABASE_URL` to a persistent managed PostgreSQL database
+- `CORS_ORIGINS` to the deployed frontend origin
+
+Do not use a host's ephemeral local filesystem for production history. Keep
+credentials in the hosting provider's secret configuration, never in Git.
+
+The current public deployment is:
+
+```text
+https://calculator-backend-1m81.onrender.com
+```
+
+## Engineering Constraints
+
+- Keep HTTP handling, orchestration, parsing, persistence, and models in their
+  existing layers.
+- Never evaluate user input as Python code.
+- Return stable JSON error messages without internal stack traces.
+- Commit no database files, virtual environments, credentials, or local caches.
+- Keep application code and documentation in English.
+
+See [codestyle.md](codestyle.md) for the backend conventions.
